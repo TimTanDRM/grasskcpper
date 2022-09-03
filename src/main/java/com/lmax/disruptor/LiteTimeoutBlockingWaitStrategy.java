@@ -1,9 +1,10 @@
 package com.lmax.disruptor;
 
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static com.lmax.disruptor.util.Util.awaitNanos;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Variation of the {@link TimeoutBlockingWaitStrategy} that attempts to elide conditional wake-ups
@@ -11,14 +12,11 @@ import static com.lmax.disruptor.util.Util.awaitNanos;
  */
 public class LiteTimeoutBlockingWaitStrategy implements WaitStrategy
 {
-    private final Object mutex = new Object();
+    private final Lock lock = new ReentrantLock();
+    private final Condition processorNotifyCondition = lock.newCondition();
     private final AtomicBoolean signalNeeded = new AtomicBoolean(false);
     private final long timeoutInNanos;
 
-    /**
-     * @param timeout how long to wait before timing out
-     * @param units the unit in which timeout is specified
-     */
     public LiteTimeoutBlockingWaitStrategy(final long timeout, final TimeUnit units)
     {
         timeoutInNanos = units.toNanos(timeout);
@@ -37,19 +35,24 @@ public class LiteTimeoutBlockingWaitStrategy implements WaitStrategy
         long availableSequence;
         if (cursorSequence.get() < sequence)
         {
-            synchronized (mutex)
+            lock.lock();
+            try
             {
                 while (cursorSequence.get() < sequence)
                 {
                     signalNeeded.getAndSet(true);
 
                     barrier.checkAlert();
-                    nanos = awaitNanos(mutex, nanos);
+                    nanos = processorNotifyCondition.awaitNanos(nanos);
                     if (nanos <= 0)
                     {
                         throw TimeoutException.INSTANCE;
                     }
                 }
+            }
+            finally
+            {
+                lock.unlock();
             }
         }
 
@@ -66,9 +69,14 @@ public class LiteTimeoutBlockingWaitStrategy implements WaitStrategy
     {
         if (signalNeeded.getAndSet(false))
         {
-            synchronized (mutex)
+            lock.lock();
+            try
             {
-                mutex.notifyAll();
+                processorNotifyCondition.signalAll();
+            }
+            finally
+            {
+                lock.unlock();
             }
         }
     }
@@ -77,9 +85,7 @@ public class LiteTimeoutBlockingWaitStrategy implements WaitStrategy
     public String toString()
     {
         return "LiteTimeoutBlockingWaitStrategy{" +
-            "mutex=" + mutex +
-            ", signalNeeded=" + signalNeeded +
-            ", timeoutInNanos=" + timeoutInNanos +
+            "processorNotifyCondition=" + processorNotifyCondition +
             '}';
     }
 }

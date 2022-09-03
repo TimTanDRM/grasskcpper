@@ -23,8 +23,14 @@ import java.util.concurrent.TimeUnit;
  * 2018/9/20.
  */
 public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
-    record HandshakeWaiter(long convId, InetSocketAddress address){
+    class HandshakeWaiter{
+        private long convId;
+        private InetSocketAddress address;
 
+        public HandshakeWaiter(long convId, InetSocketAddress address) {
+            this.convId = convId;
+            this.address = address;
+        }
     }
     private static final Logger logger = LoggerFactory.getLogger(ServerChannelHandler.class);
 
@@ -79,16 +85,16 @@ public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
         data.readUnsignedInt();
         try{
             switch (code) {
-                case 255 -> { // Connect + Handshake
+                case 255:// Connect + Handshake
                     if(user!=null) {
                         Ukcp.sendHandshakeRsp(user, enet, conv);
                     }
-                }
-                case 404 -> { // Disconnect
+                break;
+                case 404 :
                     if(ukcp!=null) {
                         ukcp.close();
                     }
-                }
+                break;
             }
         }catch (Throwable ignore){
         }

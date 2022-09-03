@@ -17,8 +17,6 @@ package com.lmax.disruptor;
 
 /**
  * Callback handler for uncaught exceptions in the event processing cycle of the {@link BatchEventProcessor}
- *
- * @param <T> implementation storing the data for sharing during exchange or parallel coordination of an event.
  */
 public interface ExceptionHandler<T>
 {
@@ -35,14 +33,14 @@ public interface ExceptionHandler<T>
     void handleEventException(Throwable ex, long sequence, T event);
 
     /**
-     * Callback to notify of an exception during {@link EventHandler#onStart()}
+     * Callback to notify of an exception during {@link LifecycleAware#onStart()}
      *
      * @param ex throw during the starting process.
      */
     void handleOnStartException(Throwable ex);
 
     /**
-     * Callback to notify of an exception during {@link EventHandler#onShutdown()}
+     * Callback to notify of an exception during {@link LifecycleAware#onShutdown()}
      *
      * @param ex throw during the shutdown process.
      */

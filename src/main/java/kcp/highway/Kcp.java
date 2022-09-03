@@ -746,15 +746,24 @@ public class Kcp implements IKcp {
             una = data.readUnsignedIntLE();
             len = data.readIntLE();
 
-            ackMask = switch (ackMaskSize) {
-                case 8 -> data.readUnsignedByte();
-                case 16 -> data.readUnsignedShortLE();
-                case 32 -> data.readUnsignedIntLE();
-                case 64 ->
-                        //TODO need unsignedLongLe
-                        data.readLongLE();
-                default -> 0;
-            };
+            switch (ackMaskSize) {
+                case 8:
+                    ackMask = data.readUnsignedByte();
+                    break;
+                case 16:
+                    ackMask = data.readUnsignedShortLE();
+                    break;
+                case 32:
+                    ackMask = data.readUnsignedIntLE();
+                    break;
+                case 64:
+                    //TODO need unsignedLongLe
+                    ackMask = data.readLongLE();
+                    break;
+                default:
+                    ackMask = 0;
+                    break;
+            }
 
             if (data.readableBytes() < len || len < 0) {
                 return -2;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2011 LMAX Ltd.
+ * Copyright 2013 LMAX Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,15 +15,7 @@
  */
 package com.lmax.disruptor;
 
-/**
- * Called by the {@link RingBuffer} to pre-populate all the events to fill the RingBuffer.
- *
- * @param <T> event implementation storing the data for sharing during exchange or parallel coordination of an event.
- */
-public interface EventFactory<T>
+public interface EventReleaser
 {
-    /*
-     * Implementations should instantiate an event object, with all memory already allocated where possible.
-     */
-    T newInstance();
+    void release();
 }

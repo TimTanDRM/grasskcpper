@@ -53,7 +53,7 @@ public interface Sequencer extends Cursored, Sequenced
      * Remove the specified sequence from this sequencer.
      *
      * @param sequence to be removed.
-     * @return <code>true</code> if this sequence was found, <code>false</code> otherwise.
+     * @return <tt>true</tt> if this sequence was found, <tt>false</tt> otherwise.
      */
     boolean removeGatingSequence(Sequence sequence);
 
@@ -90,13 +90,5 @@ public interface Sequencer extends Cursored, Sequenced
      */
     long getHighestPublishedSequence(long nextSequence, long availableSequence);
 
-    /**
-     * Creates an event poller from this sequencer
-     *
-     * @param provider from which events are drawn
-     * @param gatingSequences sequences to be gated on
-     * @param <T> the type of the event
-     * @return the event poller
-     */
     <T> EventPoller<T> newPoller(DataProvider<T> provider, Sequence... gatingSequences);
 }

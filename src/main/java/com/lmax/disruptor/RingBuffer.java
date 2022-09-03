@@ -16,33 +16,51 @@
 package com.lmax.disruptor;
 
 
+import sun.misc.Unsafe;
+
 import com.lmax.disruptor.dsl.ProducerType;
+import com.lmax.disruptor.util.Util;
 
 abstract class RingBufferPad
 {
-    protected byte
-        p10, p11, p12, p13, p14, p15, p16, p17,
-        p20, p21, p22, p23, p24, p25, p26, p27,
-        p30, p31, p32, p33, p34, p35, p36, p37,
-        p40, p41, p42, p43, p44, p45, p46, p47,
-        p50, p51, p52, p53, p54, p55, p56, p57,
-        p60, p61, p62, p63, p64, p65, p66, p67,
-        p70, p71, p72, p73, p74, p75, p76, p77;
+    protected long p1, p2, p3, p4, p5, p6, p7;
 }
 
 abstract class RingBufferFields<E> extends RingBufferPad
 {
-    private static final int BUFFER_PAD = 32;
+    private static final int BUFFER_PAD;
+    private static final long REF_ARRAY_BASE;
+    private static final int REF_ELEMENT_SHIFT;
+    private static final Unsafe UNSAFE = Util.getUnsafe();
+
+    static
+    {
+        final int scale = UNSAFE.arrayIndexScale(Object[].class);
+        if (4 == scale)
+        {
+            REF_ELEMENT_SHIFT = 2;
+        }
+        else if (8 == scale)
+        {
+            REF_ELEMENT_SHIFT = 3;
+        }
+        else
+        {
+            throw new IllegalStateException("Unknown pointer size");
+        }
+        BUFFER_PAD = 128 / scale;
+        // Including the buffer pad in the array base offset
+        REF_ARRAY_BASE = UNSAFE.arrayBaseOffset(Object[].class) + (BUFFER_PAD << REF_ELEMENT_SHIFT);
+    }
 
     private final long indexMask;
-    private final E[] entries;
+    private final Object[] entries;
     protected final int bufferSize;
     protected final Sequencer sequencer;
 
-    @SuppressWarnings("unchecked")
     RingBufferFields(
-        final EventFactory<E> eventFactory,
-        final Sequencer sequencer)
+        EventFactory<E> eventFactory,
+        Sequencer sequencer)
     {
         this.sequencer = sequencer;
         this.bufferSize = sequencer.getBufferSize();
@@ -57,11 +75,11 @@ abstract class RingBufferFields<E> extends RingBufferPad
         }
 
         this.indexMask = bufferSize - 1;
-        this.entries = (E[]) new Object[sequencer.getBufferSize() + 2 * BUFFER_PAD];
+        this.entries = new Object[sequencer.getBufferSize() + 2 * BUFFER_PAD];
         fill(eventFactory);
     }
 
-    private void fill(final EventFactory<E> eventFactory)
+    private void fill(EventFactory<E> eventFactory)
     {
         for (int i = 0; i < bufferSize; i++)
         {
@@ -69,9 +87,10 @@ abstract class RingBufferFields<E> extends RingBufferPad
         }
     }
 
-    protected final E elementAt(final long sequence)
+    @SuppressWarnings("unchecked")
+    protected final E elementAt(long sequence)
     {
-        return entries[BUFFER_PAD + (int) (sequence & indexMask)];
+        return (E) UNSAFE.getObject(entries, REF_ARRAY_BASE + ((sequence & indexMask) << REF_ELEMENT_SHIFT));
     }
 }
 
@@ -83,18 +102,8 @@ abstract class RingBufferFields<E> extends RingBufferPad
  */
 public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored, EventSequencer<E>, EventSink<E>
 {
-    /**
-     * The initial cursor value
-     */
     public static final long INITIAL_CURSOR_VALUE = Sequence.INITIAL_VALUE;
-    protected byte
-        p10, p11, p12, p13, p14, p15, p16, p17,
-        p20, p21, p22, p23, p24, p25, p26, p27,
-        p30, p31, p32, p33, p34, p35, p36, p37,
-        p40, p41, p42, p43, p44, p45, p46, p47,
-        p50, p51, p52, p53, p54, p55, p56, p57,
-        p60, p61, p62, p63, p64, p65, p66, p67,
-        p70, p71, p72, p73, p74, p75, p76, p77;
+    protected long p1, p2, p3, p4, p5, p6, p7;
 
     /**
      * Construct a RingBuffer with the full option set.
@@ -104,8 +113,8 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @throws IllegalArgumentException if bufferSize is less than 1 or not a power of 2
      */
     RingBuffer(
-        final EventFactory<E> eventFactory,
-        final Sequencer sequencer)
+        EventFactory<E> eventFactory,
+        Sequencer sequencer)
     {
         super(eventFactory, sequencer);
     }
@@ -122,13 +131,13 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @see MultiProducerSequencer
      */
     public static <E> RingBuffer<E> createMultiProducer(
-        final EventFactory<E> factory,
-        final int bufferSize,
-        final WaitStrategy waitStrategy)
+        EventFactory<E> factory,
+        int bufferSize,
+        WaitStrategy waitStrategy)
     {
         MultiProducerSequencer sequencer = new MultiProducerSequencer(bufferSize, waitStrategy);
 
-        return new RingBuffer<>(factory, sequencer);
+        return new RingBuffer<E>(factory, sequencer);
     }
 
     /**
@@ -138,10 +147,10 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @param factory    used to create the events within the ring buffer.
      * @param bufferSize number of elements to create within the ring buffer.
      * @return a constructed ring buffer.
-     * @throws IllegalArgumentException if <code>bufferSize</code> is less than 1 or not a power of 2
+     * @throws IllegalArgumentException if <tt>bufferSize</tt> is less than 1 or not a power of 2
      * @see MultiProducerSequencer
      */
-    public static <E> RingBuffer<E> createMultiProducer(final EventFactory<E> factory, final int bufferSize)
+    public static <E> RingBuffer<E> createMultiProducer(EventFactory<E> factory, int bufferSize)
     {
         return createMultiProducer(factory, bufferSize, new BlockingWaitStrategy());
     }
@@ -158,13 +167,13 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @see SingleProducerSequencer
      */
     public static <E> RingBuffer<E> createSingleProducer(
-        final EventFactory<E> factory,
-        final int bufferSize,
-        final WaitStrategy waitStrategy)
+        EventFactory<E> factory,
+        int bufferSize,
+        WaitStrategy waitStrategy)
     {
         SingleProducerSequencer sequencer = new SingleProducerSequencer(bufferSize, waitStrategy);
 
-        return new RingBuffer<>(factory, sequencer);
+        return new RingBuffer<E>(factory, sequencer);
     }
 
     /**
@@ -174,10 +183,10 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @param factory    used to create the events within the ring buffer.
      * @param bufferSize number of elements to create within the ring buffer.
      * @return a constructed ring buffer.
-     * @throws IllegalArgumentException if <code>bufferSize</code> is less than 1 or not a power of 2
+     * @throws IllegalArgumentException if <tt>bufferSize</tt> is less than 1 or not a power of 2
      * @see MultiProducerSequencer
      */
-    public static <E> RingBuffer<E> createSingleProducer(final EventFactory<E> factory, final int bufferSize)
+    public static <E> RingBuffer<E> createSingleProducer(EventFactory<E> factory, int bufferSize)
     {
         return createSingleProducer(factory, bufferSize, new BlockingWaitStrategy());
     }
@@ -194,10 +203,10 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @throws IllegalArgumentException if bufferSize is less than 1 or not a power of 2
      */
     public static <E> RingBuffer<E> create(
-        final ProducerType producerType,
-        final EventFactory<E> factory,
-        final int bufferSize,
-        final WaitStrategy waitStrategy)
+        ProducerType producerType,
+        EventFactory<E> factory,
+        int bufferSize,
+        WaitStrategy waitStrategy)
     {
         switch (producerType)
         {
@@ -226,7 +235,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @return the event for the given sequence
      */
     @Override
-    public E get(final long sequence)
+    public E get(long sequence)
     {
         return elementAt(sequence);
     }
@@ -263,7 +272,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @see Sequencer#next(int)
      */
     @Override
-    public long next(final int n)
+    public long next(int n)
     {
         return sequencer.next(n);
     }
@@ -303,7 +312,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @throws InsufficientCapacityException if the necessary space in the ring buffer is not available
      */
     @Override
-    public long tryNext(final int n) throws InsufficientCapacityException
+    public long tryNext(int n) throws InsufficientCapacityException
     {
         return sequencer.tryNext(n);
     }
@@ -317,7 +326,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @throws IllegalStateException If any gating sequences have already been specified.
      */
     @Deprecated
-    public void resetTo(final long sequence)
+    public void resetTo(long sequence)
     {
         sequencer.claim(sequence);
         sequencer.publish(sequence);
@@ -330,36 +339,24 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @param sequence The sequence to claim.
      * @return The preallocated event.
      */
-    public E claimAndGetPreallocated(final long sequence)
+    public E claimAndGetPreallocated(long sequence)
     {
         sequencer.claim(sequence);
         return get(sequence);
     }
 
     /**
-     * Determines if the event for a given sequence is currently available.
-     *
-     * <p>Note that this does not guarantee that event will still be available
-     * on the next interaction with the RingBuffer. For example, it is not
-     * necessarily safe to write code like this:
-     *
-     * <pre>{@code
-     * if (ringBuffer.isAvailable(sequence))
-     * {
-     *     final E e = ringBuffer.get(sequence);
-     *     // ...do something with e
-     * }
-     * }</pre>
-     *
-     * <p>because there is a race between the reading thread and the writing thread.
-     *
-     * <p>This method will also return false when querying for sequences that are
-     * behind the ring buffer's wrap point.
+     * Determines if a particular entry is available.  Note that using this when not within a context that is
+     * maintaining a sequence barrier, it is likely that using this to determine if you can read a value is likely
+     * to result in a race condition and broken code.
      *
      * @param sequence The sequence to identify the entry.
-     * @return If the event published with the given sequence number is currently available.
+     * @return If the value can be read or not.
+     * @deprecated Please don't use this method.  It probably won't
+     * do what you think that it does.
      */
-    public boolean isAvailable(final long sequence)
+    @Deprecated
+    public boolean isPublished(long sequence)
     {
         return sequencer.isAvailable(sequence);
     }
@@ -370,7 +367,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      *
      * @param gatingSequences The sequences to add.
      */
-    public void addGatingSequences(final Sequence... gatingSequences)
+    public void addGatingSequences(Sequence... gatingSequences)
     {
         sequencer.addGatingSequences(gatingSequences);
     }
@@ -391,9 +388,9 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * Remove the specified sequence from this ringBuffer.
      *
      * @param sequence to be removed.
-     * @return <code>true</code> if this sequence was found, <code>false</code> otherwise.
+     * @return <tt>true</tt> if this sequence was found, <tt>false</tt> otherwise.
      */
-    public boolean removeGatingSequence(final Sequence sequence)
+    public boolean removeGatingSequence(Sequence sequence)
     {
         return sequencer.removeGatingSequence(sequence);
     }
@@ -406,7 +403,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @return A sequence barrier that will track the specified sequences.
      * @see SequenceBarrier
      */
-    public SequenceBarrier newBarrier(final Sequence... sequencesToTrack)
+    public SequenceBarrier newBarrier(Sequence... sequencesToTrack)
     {
         return sequencer.newBarrier(sequencesToTrack);
     }
@@ -417,7 +414,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @param gatingSequences to be gated on.
      * @return A poller that will gate on this ring buffer and the supplied sequences.
      */
-    public EventPoller<E> newPoller(final Sequence... gatingSequences)
+    public EventPoller<E> newPoller(Sequence... gatingSequences)
     {
         return sequencer.newPoller(this, gatingSequences);
     }
@@ -437,47 +434,43 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
 
     /**
      * The size of the buffer.
-     *
-     * @return size of buffer
      */
-    @Override
     public int getBufferSize()
     {
         return bufferSize;
     }
 
     /**
-     * Given specified <code>requiredCapacity</code> determines if that amount of space
-     * is available.  Note, you can not assume that if this method returns <code>true</code>
+     * Given specified <tt>requiredCapacity</tt> determines if that amount of space
+     * is available.  Note, you can not assume that if this method returns <tt>true</tt>
      * that a call to {@link RingBuffer#next()} will not block.  Especially true if this
      * ring buffer is set up to handle multiple producers.
      *
      * @param requiredCapacity The capacity to check for.
-     * @return <code>true</code> If the specified <code>requiredCapacity</code> is available
-     * <code>false</code> if not.
+     * @return <tt>true</tt> If the specified <tt>requiredCapacity</tt> is available
+     * <tt>false</tt> if not.
      */
-    @Override
-    public boolean hasAvailableCapacity(final int requiredCapacity)
+    public boolean hasAvailableCapacity(int requiredCapacity)
     {
         return sequencer.hasAvailableCapacity(requiredCapacity);
     }
 
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslator)
+     * @see EventSink#publishEvent(EventTranslator)
      */
     @Override
-    public void publishEvent(final EventTranslator<E> translator)
+    public void publishEvent(EventTranslator<E> translator)
     {
         final long sequence = sequencer.next();
         translateAndPublish(translator, sequence);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvent(com.lmax.disruptor.EventTranslator)
+     * @see EventSink#tryPublishEvent(EventTranslator)
      */
     @Override
-    public boolean tryPublishEvent(final EventTranslator<E> translator)
+    public boolean tryPublishEvent(EventTranslator<E> translator)
     {
         try
         {
@@ -492,22 +485,22 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslatorOneArg, Object)
+     * @see EventSink#publishEvent(EventTranslatorOneArg, Object)
      * com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslatorOneArg, A)
      */
     @Override
-    public <A> void publishEvent(final EventTranslatorOneArg<E, A> translator, final A arg0)
+    public <A> void publishEvent(EventTranslatorOneArg<E, A> translator, A arg0)
     {
         final long sequence = sequencer.next();
         translateAndPublish(translator, sequence, arg0);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvent(com.lmax.disruptor.EventTranslatorOneArg, Object)
+     * @see EventSink#tryPublishEvent(EventTranslatorOneArg, Object)
      * com.lmax.disruptor.EventSink#tryPublishEvent(com.lmax.disruptor.EventTranslatorOneArg, A)
      */
     @Override
-    public <A> boolean tryPublishEvent(final EventTranslatorOneArg<E, A> translator, final A arg0)
+    public <A> boolean tryPublishEvent(EventTranslatorOneArg<E, A> translator, A arg0)
     {
         try
         {
@@ -522,22 +515,22 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslatorTwoArg, Object, Object)
+     * @see EventSink#publishEvent(EventTranslatorTwoArg, Object, Object)
      * com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslatorTwoArg, A, B)
      */
     @Override
-    public <A, B> void publishEvent(final EventTranslatorTwoArg<E, A, B> translator, final A arg0, final B arg1)
+    public <A, B> void publishEvent(EventTranslatorTwoArg<E, A, B> translator, A arg0, B arg1)
     {
         final long sequence = sequencer.next();
         translateAndPublish(translator, sequence, arg0, arg1);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvent(com.lmax.disruptor.EventTranslatorTwoArg, Object, Object)
+     * @see EventSink#tryPublishEvent(EventTranslatorTwoArg, Object, Object)
      * com.lmax.disruptor.EventSink#tryPublishEvent(com.lmax.disruptor.EventTranslatorTwoArg, A, B)
      */
     @Override
-    public <A, B> boolean tryPublishEvent(final EventTranslatorTwoArg<E, A, B> translator, final A arg0, final B arg1)
+    public <A, B> boolean tryPublishEvent(EventTranslatorTwoArg<E, A, B> translator, A arg0, B arg1)
     {
         try
         {
@@ -552,22 +545,22 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslatorThreeArg, Object, Object, Object)
+     * @see EventSink#publishEvent(EventTranslatorThreeArg, Object, Object, Object)
      * com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslatorThreeArg, A, B, C)
      */
     @Override
-    public <A, B, C> void publishEvent(final EventTranslatorThreeArg<E, A, B, C> translator, final A arg0, final B arg1, final C arg2)
+    public <A, B, C> void publishEvent(EventTranslatorThreeArg<E, A, B, C> translator, A arg0, B arg1, C arg2)
     {
         final long sequence = sequencer.next();
         translateAndPublish(translator, sequence, arg0, arg1, arg2);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvent(com.lmax.disruptor.EventTranslatorThreeArg, Object, Object, Object)
+     * @see EventSink#tryPublishEvent(EventTranslatorThreeArg, Object, Object, Object)
      * com.lmax.disruptor.EventSink#tryPublishEvent(com.lmax.disruptor.EventTranslatorThreeArg, A, B, C)
      */
     @Override
-    public <A, B, C> boolean tryPublishEvent(final EventTranslatorThreeArg<E, A, B, C> translator, final A arg0, final B arg1, final C arg2)
+    public <A, B, C> boolean tryPublishEvent(EventTranslatorThreeArg<E, A, B, C> translator, A arg0, B arg1, C arg2)
     {
         try
         {
@@ -582,20 +575,20 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvent(com.lmax.disruptor.EventTranslatorVararg, java.lang.Object...)
+     * @see EventSink#publishEvent(EventTranslatorVararg, Object...)
      */
     @Override
-    public void publishEvent(final EventTranslatorVararg<E> translator, final Object... args)
+    public void publishEvent(EventTranslatorVararg<E> translator, Object... args)
     {
         final long sequence = sequencer.next();
         translateAndPublish(translator, sequence, args);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvent(com.lmax.disruptor.EventTranslatorVararg, java.lang.Object...)
+     * @see EventSink#tryPublishEvent(EventTranslatorVararg, Object...)
      */
     @Override
-    public boolean tryPublishEvent(final EventTranslatorVararg<E> translator, final Object... args)
+    public boolean tryPublishEvent(EventTranslatorVararg<E> translator, Object... args)
     {
         try
         {
@@ -611,19 +604,19 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
 
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslator[])
+     * @see EventSink#publishEvents(EventTranslator[])
      */
     @Override
-    public void publishEvents(final EventTranslator<E>[] translators)
+    public void publishEvents(EventTranslator<E>[] translators)
     {
         publishEvents(translators, 0, translators.length);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslator[], int, int)
+     * @see EventSink#publishEvents(EventTranslator[], int, int)
      */
     @Override
-    public void publishEvents(final EventTranslator<E>[] translators, final int batchStartsAt, final int batchSize)
+    public void publishEvents(EventTranslator<E>[] translators, int batchStartsAt, int batchSize)
     {
         checkBounds(translators, batchStartsAt, batchSize);
         final long finalSequence = sequencer.next(batchSize);
@@ -631,19 +624,19 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslator[])
+     * @see EventSink#tryPublishEvents(EventTranslator[])
      */
     @Override
-    public boolean tryPublishEvents(final EventTranslator<E>[] translators)
+    public boolean tryPublishEvents(EventTranslator<E>[] translators)
     {
         return tryPublishEvents(translators, 0, translators.length);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslator[], int, int)
+     * @see EventSink#tryPublishEvents(EventTranslator[], int, int)
      */
     @Override
-    public boolean tryPublishEvents(final EventTranslator<E>[] translators, final int batchStartsAt, final int batchSize)
+    public boolean tryPublishEvents(EventTranslator<E>[] translators, int batchStartsAt, int batchSize)
     {
         checkBounds(translators, batchStartsAt, batchSize);
         try
@@ -659,21 +652,21 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorOneArg, Object[])
+     * @see EventSink#publishEvents(EventTranslatorOneArg, Object[])
      * com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorOneArg, A[])
      */
     @Override
-    public <A> void publishEvents(final EventTranslatorOneArg<E, A> translator, final A[] arg0)
+    public <A> void publishEvents(EventTranslatorOneArg<E, A> translator, A[] arg0)
     {
         publishEvents(translator, 0, arg0.length, arg0);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorOneArg, int, int, Object[])
+     * @see EventSink#publishEvents(EventTranslatorOneArg, int, int, Object[])
      * com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorOneArg, int, int, A[])
      */
     @Override
-    public <A> void publishEvents(final EventTranslatorOneArg<E, A> translator, final int batchStartsAt, final int batchSize, final A[] arg0)
+    public <A> void publishEvents(EventTranslatorOneArg<E, A> translator, int batchStartsAt, int batchSize, A[] arg0)
     {
         checkBounds(arg0, batchStartsAt, batchSize);
         final long finalSequence = sequencer.next(batchSize);
@@ -681,22 +674,22 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorOneArg, Object[])
+     * @see EventSink#tryPublishEvents(EventTranslatorOneArg, Object[])
      * com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorOneArg, A[])
      */
     @Override
-    public <A> boolean tryPublishEvents(final EventTranslatorOneArg<E, A> translator, final A[] arg0)
+    public <A> boolean tryPublishEvents(EventTranslatorOneArg<E, A> translator, A[] arg0)
     {
         return tryPublishEvents(translator, 0, arg0.length, arg0);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorOneArg, int, int, Object[])
+     * @see EventSink#tryPublishEvents(EventTranslatorOneArg, int, int, Object[])
      * com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorOneArg, int, int, A[])
      */
     @Override
     public <A> boolean tryPublishEvents(
-            final EventTranslatorOneArg<E, A> translator, final int batchStartsAt, final int batchSize, final A[] arg0)
+        EventTranslatorOneArg<E, A> translator, int batchStartsAt, int batchSize, A[] arg0)
     {
         checkBounds(arg0, batchStartsAt, batchSize);
         try
@@ -712,22 +705,22 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorTwoArg, Object[], Object[])
+     * @see EventSink#publishEvents(EventTranslatorTwoArg, Object[], Object[])
      * com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorTwoArg, A[], B[])
      */
     @Override
-    public <A, B> void publishEvents(final EventTranslatorTwoArg<E, A, B> translator, final A[] arg0, final B[] arg1)
+    public <A, B> void publishEvents(EventTranslatorTwoArg<E, A, B> translator, A[] arg0, B[] arg1)
     {
         publishEvents(translator, 0, arg0.length, arg0, arg1);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorTwoArg, int, int, Object[], Object[])
+     * @see EventSink#publishEvents(EventTranslatorTwoArg, int, int, Object[], Object[])
      * com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorTwoArg, int, int, A[], B[])
      */
     @Override
     public <A, B> void publishEvents(
-        final EventTranslatorTwoArg<E, A, B> translator, final int batchStartsAt, final int batchSize, final A[] arg0, final B[] arg1)
+        EventTranslatorTwoArg<E, A, B> translator, int batchStartsAt, int batchSize, A[] arg0, B[] arg1)
     {
         checkBounds(arg0, arg1, batchStartsAt, batchSize);
         final long finalSequence = sequencer.next(batchSize);
@@ -735,22 +728,22 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorTwoArg, Object[], Object[])
+     * @see EventSink#tryPublishEvents(EventTranslatorTwoArg, Object[], Object[])
      * com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorTwoArg, A[], B[])
      */
     @Override
-    public <A, B> boolean tryPublishEvents(final EventTranslatorTwoArg<E, A, B> translator, final A[] arg0, final B[] arg1)
+    public <A, B> boolean tryPublishEvents(EventTranslatorTwoArg<E, A, B> translator, A[] arg0, B[] arg1)
     {
         return tryPublishEvents(translator, 0, arg0.length, arg0, arg1);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorTwoArg, int, int, Object[], Object[])
+     * @see EventSink#tryPublishEvents(EventTranslatorTwoArg, int, int, Object[], Object[])
      * com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorTwoArg, int, int, A[], B[])
      */
     @Override
     public <A, B> boolean tryPublishEvents(
-        final EventTranslatorTwoArg<E, A, B> translator, final int batchStartsAt, final int batchSize, final A[] arg0, final B[] arg1)
+        EventTranslatorTwoArg<E, A, B> translator, int batchStartsAt, int batchSize, A[] arg0, B[] arg1)
     {
         checkBounds(arg0, arg1, batchStartsAt, batchSize);
         try
@@ -766,22 +759,22 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorThreeArg, Object[], Object[], Object[])
+     * @see EventSink#publishEvents(EventTranslatorThreeArg, Object[], Object[], Object[])
      * com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorThreeArg, A[], B[], C[])
      */
     @Override
-    public <A, B, C> void publishEvents(final EventTranslatorThreeArg<E, A, B, C> translator, final A[] arg0, final B[] arg1, final C[] arg2)
+    public <A, B, C> void publishEvents(EventTranslatorThreeArg<E, A, B, C> translator, A[] arg0, B[] arg1, C[] arg2)
     {
         publishEvents(translator, 0, arg0.length, arg0, arg1, arg2);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorThreeArg, int, int, Object[], Object[], Object[])
+     * @see EventSink#publishEvents(EventTranslatorThreeArg, int, int, Object[], Object[], Object[])
      * com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorThreeArg, int, int, A[], B[], C[])
      */
     @Override
     public <A, B, C> void publishEvents(
-        final EventTranslatorThreeArg<E, A, B, C> translator, final int batchStartsAt, final int batchSize, final A[] arg0, final B[] arg1, final C[] arg2)
+        EventTranslatorThreeArg<E, A, B, C> translator, int batchStartsAt, int batchSize, A[] arg0, B[] arg1, C[] arg2)
     {
         checkBounds(arg0, arg1, arg2, batchStartsAt, batchSize);
         final long finalSequence = sequencer.next(batchSize);
@@ -789,23 +782,23 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorThreeArg, Object[], Object[], Object[])
+     * @see EventSink#tryPublishEvents(EventTranslatorThreeArg, Object[], Object[], Object[])
      * com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorThreeArg, A[], B[], C[])
      */
     @Override
     public <A, B, C> boolean tryPublishEvents(
-        final EventTranslatorThreeArg<E, A, B, C> translator, final A[] arg0, final B[] arg1, final C[] arg2)
+        EventTranslatorThreeArg<E, A, B, C> translator, A[] arg0, B[] arg1, C[] arg2)
     {
         return tryPublishEvents(translator, 0, arg0.length, arg0, arg1, arg2);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorThreeArg, int, int, Object[], Object[], Object[])
+     * @see EventSink#tryPublishEvents(EventTranslatorThreeArg, int, int, Object[], Object[], Object[])
      * com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorThreeArg, int, int, A[], B[], C[])
      */
     @Override
     public <A, B, C> boolean tryPublishEvents(
-        final EventTranslatorThreeArg<E, A, B, C> translator, final int batchStartsAt, final int batchSize, final A[] arg0, final B[] arg1, final C[] arg2)
+        EventTranslatorThreeArg<E, A, B, C> translator, int batchStartsAt, int batchSize, A[] arg0, B[] arg1, C[] arg2)
     {
         checkBounds(arg0, arg1, arg2, batchStartsAt, batchSize);
         try
@@ -821,19 +814,19 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorVararg, java.lang.Object[][])
+     * @see EventSink#publishEvents(EventTranslatorVararg, Object[][])
      */
     @Override
-    public void publishEvents(final EventTranslatorVararg<E> translator, final Object[]... args)
+    public void publishEvents(EventTranslatorVararg<E> translator, Object[]... args)
     {
         publishEvents(translator, 0, args.length, args);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#publishEvents(com.lmax.disruptor.EventTranslatorVararg, int, int, java.lang.Object[][])
+     * @see EventSink#publishEvents(EventTranslatorVararg, int, int, Object[][])
      */
     @Override
-    public void publishEvents(final EventTranslatorVararg<E> translator, final int batchStartsAt, final int batchSize, final Object[]... args)
+    public void publishEvents(EventTranslatorVararg<E> translator, int batchStartsAt, int batchSize, Object[]... args)
     {
         checkBounds(batchStartsAt, batchSize, args);
         final long finalSequence = sequencer.next(batchSize);
@@ -841,20 +834,20 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorVararg, java.lang.Object[][])
+     * @see EventSink#tryPublishEvents(EventTranslatorVararg, Object[][])
      */
     @Override
-    public boolean tryPublishEvents(final EventTranslatorVararg<E> translator, final Object[]... args)
+    public boolean tryPublishEvents(EventTranslatorVararg<E> translator, Object[]... args)
     {
         return tryPublishEvents(translator, 0, args.length, args);
     }
 
     /**
-     * @see com.lmax.disruptor.EventSink#tryPublishEvents(com.lmax.disruptor.EventTranslatorVararg, int, int, java.lang.Object[][])
+     * @see EventSink#tryPublishEvents(EventTranslatorVararg, int, int, Object[][])
      */
     @Override
     public boolean tryPublishEvents(
-        final EventTranslatorVararg<E> translator, final int batchStartsAt, final int batchSize, final Object[]... args)
+        EventTranslatorVararg<E> translator, int batchStartsAt, int batchSize, Object[]... args)
     {
         checkBounds(args, batchStartsAt, batchSize);
         try
@@ -876,7 +869,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @param sequence the sequence to publish.
      */
     @Override
-    public void publish(final long sequence)
+    public void publish(long sequence)
     {
         sequencer.publish(sequence);
     }
@@ -890,7 +883,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      * @see Sequencer#next(int)
      */
     @Override
-    public void publish(final long lo, final long hi)
+    public void publish(long lo, long hi)
     {
         sequencer.publish(lo, hi);
     }
@@ -900,7 +893,6 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
      *
      * @return The number of slots remaining.
      */
-    @Override
     public long remainingCapacity()
     {
         return sequencer.remainingCapacity();
@@ -912,7 +904,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
         batchOverRuns(translators, batchStartsAt, batchSize);
     }
 
-    private void checkBatchSizing(final int batchStartsAt, final int batchSize)
+    private void checkBatchSizing(int batchStartsAt, int batchSize)
     {
         if (batchStartsAt < 0 || batchSize < 0)
         {
@@ -963,7 +955,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
         }
     }
 
-    private void translateAndPublish(final EventTranslator<E> translator, final long sequence)
+    private void translateAndPublish(EventTranslator<E> translator, long sequence)
     {
         try
         {
@@ -975,7 +967,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
         }
     }
 
-    private <A> void translateAndPublish(final EventTranslatorOneArg<E, A> translator, final long sequence, final A arg0)
+    private <A> void translateAndPublish(EventTranslatorOneArg<E, A> translator, long sequence, A arg0)
     {
         try
         {
@@ -987,7 +979,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
         }
     }
 
-    private <A, B> void translateAndPublish(final EventTranslatorTwoArg<E, A, B> translator, final long sequence, final A arg0, final B arg1)
+    private <A, B> void translateAndPublish(EventTranslatorTwoArg<E, A, B> translator, long sequence, A arg0, B arg1)
     {
         try
         {
@@ -1000,8 +992,8 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     private <A, B, C> void translateAndPublish(
-        final EventTranslatorThreeArg<E, A, B, C> translator, final long sequence,
-        final A arg0, final B arg1, final C arg2)
+        EventTranslatorThreeArg<E, A, B, C> translator, long sequence,
+        A arg0, B arg1, C arg2)
     {
         try
         {
@@ -1013,7 +1005,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
         }
     }
 
-    private void translateAndPublish(final EventTranslatorVararg<E> translator, final long sequence, final Object... args)
+    private void translateAndPublish(EventTranslatorVararg<E> translator, long sequence, Object... args)
     {
         try
         {
@@ -1026,7 +1018,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     private void translateAndPublishBatch(
-        final EventTranslator<E>[] translators, final int batchStartsAt,
+        final EventTranslator<E>[] translators, int batchStartsAt,
         final int batchSize, final long finalSequence)
     {
         final long initialSequence = finalSequence - (batchSize - 1);
@@ -1048,7 +1040,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
 
     private <A> void translateAndPublishBatch(
         final EventTranslatorOneArg<E, A> translator, final A[] arg0,
-        final int batchStartsAt, final int batchSize, final long finalSequence)
+        int batchStartsAt, final int batchSize, final long finalSequence)
     {
         final long initialSequence = finalSequence - (batchSize - 1);
         try
@@ -1068,7 +1060,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
 
     private <A, B> void translateAndPublishBatch(
         final EventTranslatorTwoArg<E, A, B> translator, final A[] arg0,
-        final B[] arg1, final int batchStartsAt, final int batchSize,
+        final B[] arg1, int batchStartsAt, int batchSize,
         final long finalSequence)
     {
         final long initialSequence = finalSequence - (batchSize - 1);
@@ -1089,7 +1081,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
 
     private <A, B, C> void translateAndPublishBatch(
         final EventTranslatorThreeArg<E, A, B, C> translator,
-        final A[] arg0, final B[] arg1, final C[] arg2, final int batchStartsAt,
+        final A[] arg0, final B[] arg1, final C[] arg2, int batchStartsAt,
         final int batchSize, final long finalSequence)
     {
         final long initialSequence = finalSequence - (batchSize - 1);
@@ -1109,7 +1101,7 @@ public final class RingBuffer<E> extends RingBufferFields<E> implements Cursored
     }
 
     private void translateAndPublishBatch(
-        final EventTranslatorVararg<E> translator, final int batchStartsAt,
+        final EventTranslatorVararg<E> translator, int batchStartsAt,
         final int batchSize, final long finalSequence, final Object[][] args)
     {
         final long initialSequence = finalSequence - (batchSize - 1);

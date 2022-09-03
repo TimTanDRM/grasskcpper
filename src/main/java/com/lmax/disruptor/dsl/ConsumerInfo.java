@@ -3,7 +3,7 @@ package com.lmax.disruptor.dsl;
 import com.lmax.disruptor.Sequence;
 import com.lmax.disruptor.SequenceBarrier;
 
-import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.Executor;
 
 interface ConsumerInfo
 {
@@ -13,7 +13,7 @@ interface ConsumerInfo
 
     boolean isEndOfChain();
 
-    void start(ThreadFactory threadFactory);
+    void start(Executor executor);
 
     void halt();
 

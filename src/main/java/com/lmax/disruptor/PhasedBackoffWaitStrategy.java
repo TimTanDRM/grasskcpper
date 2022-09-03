@@ -18,10 +18,10 @@ package com.lmax.disruptor;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Phased wait strategy for waiting {@link EventProcessor}s on a barrier.
+ * <p>Phased wait strategy for waiting {@link EventProcessor}s on a barrier.</p>
  *
  * <p>This strategy can be used when throughput and low-latency are not as important as CPU resource.
- * Spins, then yields, then waits using the configured fallback WaitStrategy.
+ * Spins, then yields, then waits using the configured fallback WaitStrategy.</p>
  */
 public final class PhasedBackoffWaitStrategy implements WaitStrategy
 {
@@ -30,18 +30,11 @@ public final class PhasedBackoffWaitStrategy implements WaitStrategy
     private final long yieldTimeoutNanos;
     private final WaitStrategy fallbackStrategy;
 
-    /**
-     *
-     * @param spinTimeout The maximum time in to busy spin for.
-     * @param yieldTimeout The maximum time in to yield for.
-     * @param units Time units used for the timeout values.
-     * @param fallbackStrategy After spinning + yielding, the strategy to fall back to
-     */
     public PhasedBackoffWaitStrategy(
-        final long spinTimeout,
-        final long yieldTimeout,
-        final TimeUnit units,
-        final WaitStrategy fallbackStrategy)
+        long spinTimeout,
+        long yieldTimeout,
+        TimeUnit units,
+        WaitStrategy fallbackStrategy)
     {
         this.spinTimeoutNanos = units.toNanos(spinTimeout);
         this.yieldTimeoutNanos = spinTimeoutNanos + units.toNanos(yieldTimeout);
@@ -57,9 +50,9 @@ public final class PhasedBackoffWaitStrategy implements WaitStrategy
      * @return The constructed wait strategy.
      */
     public static PhasedBackoffWaitStrategy withLock(
-        final long spinTimeout,
-        final long yieldTimeout,
-        final TimeUnit units)
+        long spinTimeout,
+        long yieldTimeout,
+        TimeUnit units)
     {
         return new PhasedBackoffWaitStrategy(
             spinTimeout, yieldTimeout,
@@ -75,9 +68,9 @@ public final class PhasedBackoffWaitStrategy implements WaitStrategy
      * @return The constructed wait strategy.
      */
     public static PhasedBackoffWaitStrategy withLiteLock(
-        final long spinTimeout,
-        final long yieldTimeout,
-        final TimeUnit units)
+        long spinTimeout,
+        long yieldTimeout,
+        TimeUnit units)
     {
         return new PhasedBackoffWaitStrategy(
             spinTimeout, yieldTimeout,
@@ -93,9 +86,9 @@ public final class PhasedBackoffWaitStrategy implements WaitStrategy
      * @return The constructed wait strategy.
      */
     public static PhasedBackoffWaitStrategy withSleep(
-        final long spinTimeout,
-        final long yieldTimeout,
-        final TimeUnit units)
+        long spinTimeout,
+        long yieldTimeout,
+        TimeUnit units)
     {
         return new PhasedBackoffWaitStrategy(
             spinTimeout, yieldTimeout,
@@ -103,7 +96,7 @@ public final class PhasedBackoffWaitStrategy implements WaitStrategy
     }
 
     @Override
-    public long waitFor(final long sequence, final Sequence cursor, final Sequence dependentSequence, final SequenceBarrier barrier)
+    public long waitFor(long sequence, Sequence cursor, Sequence dependentSequence, SequenceBarrier barrier)
         throws AlertException, InterruptedException, TimeoutException
     {
         long availableSequence;

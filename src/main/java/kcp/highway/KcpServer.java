@@ -95,7 +95,7 @@ public class KcpServer {
 
         bootstrap.channel(channelClass);
         bootstrap.group(group);
-        bootstrap.handler(new ChannelInitializer<>() {
+        bootstrap.handler(new ChannelInitializer<Channel>() {
             @Override
             protected void initChannel(Channel ch) {
                 ServerChannelHandler serverChannelHandler = new ServerChannelHandler(channelManager, channelConfig, iMessageExecutorPool, kcpListener, hashedWheelTimer);

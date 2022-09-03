@@ -17,12 +17,13 @@ package com.lmax.disruptor;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.lmax.disruptor.RewindAction.REWIND;
-
 
 /**
  * Convenience class for handling the batching semantics of consuming entries from a {@link RingBuffer}
  * and delegating the available events to an {@link EventHandler}.
+ * <p>
+ * If the {@link EventHandler} also implements {@link LifecycleAware} it will be notified just after the thread
+ * is started and just before the thread is shutdown.
  *
  * @param <T> event implementation storing the data for sharing during exchange or parallel coordination of an event.
  */
@@ -39,8 +40,8 @@ public final class BatchEventProcessor<T>
     private final SequenceBarrier sequenceBarrier;
     private final EventHandler<? super T> eventHandler;
     private final Sequence sequence = new Sequence(Sequencer.INITIAL_CURSOR_VALUE);
-    private BatchRewindStrategy batchRewindStrategy = new SimpleBatchRewindStrategy();
-    private int retriesAttempted = 0;
+    private final TimeoutHandler timeoutHandler;
+    private final BatchStartAware batchStartAware;
 
     /**
      * Construct a {@link EventProcessor} that will automatically track the progress by updating its sequence when
@@ -59,7 +60,15 @@ public final class BatchEventProcessor<T>
         this.sequenceBarrier = sequenceBarrier;
         this.eventHandler = eventHandler;
 
-        eventHandler.setSequenceCallback(sequence);
+        if (eventHandler instanceof SequenceReportingEventHandler)
+        {
+            ((SequenceReportingEventHandler<?>) eventHandler).setSequenceCallback(sequence);
+        }
+
+        batchStartAware =
+            (eventHandler instanceof BatchStartAware) ? (BatchStartAware) eventHandler : null;
+        timeoutHandler =
+            (eventHandler instanceof TimeoutHandler) ? (TimeoutHandler) eventHandler : null;
     }
 
     @Override
@@ -82,7 +91,7 @@ public final class BatchEventProcessor<T>
     }
 
     /**
-     * Set a new {@link ExceptionHandler} for handling exceptions propagated out of the {@link BatchEventProcessor}.
+     * Set a new {@link ExceptionHandler} for handling exceptions propagated out of the {@link BatchEventProcessor}
      *
      * @param exceptionHandler to replace the existing exceptionHandler.
      */
@@ -97,23 +106,6 @@ public final class BatchEventProcessor<T>
     }
 
     /**
-     * Set a new {@link BatchRewindStrategy} for customizing how to handle a {@link RewindableException}
-     * Which can include whether the batch should be rewound and reattempted,
-     * or simply thrown and move on to the next sequence
-     * the default is a {@link SimpleBatchRewindStrategy} which always rewinds
-     * @param batchRewindStrategy to replace the existing rewindStrategy.
-     */
-    public void setRewindStrategy(final BatchRewindStrategy batchRewindStrategy)
-    {
-        if (null == batchRewindStrategy)
-        {
-            throw new NullPointerException();
-        }
-
-        this.batchRewindStrategy = batchRewindStrategy;
-    }
-
-    /**
      * It is ok to have another thread rerun this method after a halt().
      *
      * @throws IllegalStateException if this object instance is already running in a thread
@@ -121,8 +113,7 @@ public final class BatchEventProcessor<T>
     @Override
     public void run()
     {
-        int witnessValue = running.compareAndExchange(IDLE, RUNNING);
-        if (witnessValue == IDLE) // Successful CAS
+        if (running.compareAndSet(IDLE, RUNNING))
         {
             sequenceBarrier.clearAlert();
 
@@ -142,7 +133,10 @@ public final class BatchEventProcessor<T>
         }
         else
         {
-            if (witnessValue == RUNNING)
+            // This is a little bit of guess work.  The running state could of changed to HALTED by
+            // this point.  However, Java does not have compareAndExchange which is the only way
+            // to get it exactly correct.
+            if (running.get() == RUNNING)
             {
                 throw new IllegalStateException("Thread is already running");
             }
@@ -160,40 +154,22 @@ public final class BatchEventProcessor<T>
 
         while (true)
         {
-            final long startOfBatchSequence = nextSequence;
             try
             {
-                try
+                final long availableSequence = sequenceBarrier.waitFor(nextSequence);
+                if (batchStartAware != null)
                 {
-
-                    final long availableSequence = sequenceBarrier.waitFor(nextSequence);
-                    if (availableSequence >= nextSequence)
-                    {
-                        eventHandler.onBatchStart(availableSequence - nextSequence + 1);
-                    }
-
-                    while (nextSequence <= availableSequence)
-                    {
-                        event = dataProvider.get(nextSequence);
-                        eventHandler.onEvent(event, nextSequence, nextSequence == availableSequence);
-                        nextSequence++;
-                    }
-
-                    retriesAttempted = 0;
-                    sequence.set(availableSequence);
+                    batchStartAware.onBatchStart(availableSequence - nextSequence + 1);
                 }
-                catch (final RewindableException e)
+
+                while (nextSequence <= availableSequence)
                 {
-                    if (this.batchRewindStrategy.handleRewindException(e, ++retriesAttempted) == REWIND)
-                    {
-                        nextSequence = startOfBatchSequence;
-                    }
-                    else
-                    {
-                        retriesAttempted = 0;
-                        throw e;
-                    }
+                    event = dataProvider.get(nextSequence);
+                    eventHandler.onEvent(event, nextSequence, nextSequence == availableSequence);
+                    nextSequence++;
                 }
+
+                sequence.set(availableSequence);
             }
             catch (final TimeoutException e)
             {
@@ -225,7 +201,10 @@ public final class BatchEventProcessor<T>
     {
         try
         {
-            eventHandler.onTimeout(availableSequence);
+            if (timeoutHandler != null)
+            {
+                timeoutHandler.onTimeout(availableSequence);
+            }
         }
         catch (Throwable e)
         {
@@ -234,32 +213,38 @@ public final class BatchEventProcessor<T>
     }
 
     /**
-     * Notifies the EventHandler when this processor is starting up.
+     * Notifies the EventHandler when this processor is starting up
      */
     private void notifyStart()
     {
-        try
+        if (eventHandler instanceof LifecycleAware)
         {
-            eventHandler.onStart();
-        }
-        catch (final Throwable ex)
-        {
-            handleOnStartException(ex);
+            try
+            {
+                ((LifecycleAware) eventHandler).onStart();
+            }
+            catch (final Throwable ex)
+            {
+                handleOnStartException(ex);
+            }
         }
     }
 
     /**
-     * Notifies the EventHandler immediately prior to this processor shutting down.
+     * Notifies the EventHandler immediately prior to this processor shutting down
      */
     private void notifyShutdown()
     {
-        try
+        if (eventHandler instanceof LifecycleAware)
         {
-            eventHandler.onShutdown();
-        }
-        catch (final Throwable ex)
-        {
-            handleOnShutdownException(ex);
+            try
+            {
+                ((LifecycleAware) eventHandler).onShutdown();
+            }
+            catch (final Throwable ex)
+            {
+                handleOnShutdownException(ex);
+            }
         }
     }
 
@@ -293,6 +278,10 @@ public final class BatchEventProcessor<T>
     private ExceptionHandler<? super T> getExceptionHandler()
     {
         ExceptionHandler<? super T> handler = exceptionHandler;
-        return handler == null ? ExceptionHandlers.defaultHandler() : handler;
+        if (handler == null)
+        {
+            return ExceptionHandlers.defaultHandler();
+        }
+        return handler;
     }
 }

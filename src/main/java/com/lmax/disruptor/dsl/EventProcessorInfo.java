@@ -20,12 +20,12 @@ import com.lmax.disruptor.EventProcessor;
 import com.lmax.disruptor.Sequence;
 import com.lmax.disruptor.SequenceBarrier;
 
-import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.Executor;
 
 /**
- * Wrapper class to tie together a particular event processing stage</p>
- *
- * <p><p>Tracks the event processor instance, the event handler instance, and sequence barrier which the stage is attached to.</p>
+ * <p>Wrapper class to tie together a particular event processing stage</p>
+ * <p>
+ * <p>Tracks the event processor instance, the event handler instance, and sequence barrier which the stage is attached to.</p>
  *
  * @param <T> the type of the configured {@link EventHandler}
  */
@@ -73,15 +73,9 @@ class EventProcessorInfo<T> implements ConsumerInfo
     }
 
     @Override
-    public void start(final ThreadFactory threadFactory)
+    public void start(final Executor executor)
     {
-        final Thread thread = threadFactory.newThread(eventprocessor);
-        if (null == thread)
-        {
-            throw new RuntimeException("Failed to create thread to run: " + eventprocessor);
-        }
-
-        thread.start();
+        executor.execute(eventprocessor);
     }
 
     @Override

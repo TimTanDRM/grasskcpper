@@ -15,18 +15,9 @@
  */
 package com.lmax.disruptor.dsl;
 
-import com.lmax.disruptor.EventHandler;
-import com.lmax.disruptor.EventProcessor;
-import com.lmax.disruptor.Sequence;
-import com.lmax.disruptor.SequenceBarrier;
+import com.lmax.disruptor.*;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Provides a repository mechanism to associate {@link EventHandler}s with {@link EventProcessor}s
@@ -59,32 +50,17 @@ class ConsumerRepository<T> implements Iterable<ConsumerInfo>
         consumerInfos.add(consumerInfo);
     }
 
-    public boolean hasBacklog(final long cursor, final boolean includeStopped)
+    public void add(final WorkerPool<T> workerPool, final SequenceBarrier sequenceBarrier)
     {
-        for (ConsumerInfo consumerInfo : consumerInfos)
+        final WorkerPoolInfo<T> workerPoolInfo = new WorkerPoolInfo<>(workerPool, sequenceBarrier);
+        consumerInfos.add(workerPoolInfo);
+        for (Sequence sequence : workerPool.getWorkerSequences())
         {
-            if ((includeStopped || consumerInfo.isRunning()) && consumerInfo.isEndOfChain())
-            {
-                final Sequence[] sequences = consumerInfo.getSequences();
-                for (Sequence sequence : sequences)
-                {
-                    if (cursor > sequence.get())
-                    {
-                        return true;
-                    }
-                }
-            }
+            eventProcessorInfoBySequence.put(sequence, workerPoolInfo);
         }
-
-        return false;
     }
 
-    /**
-     * @deprecated this function should no longer be used to determine the existence
-     * of a backlog, instead use hasBacklog
-     */
-    @Deprecated
-    public Sequence[] getLastSequenceInChain(final boolean includeStopped)
+    public Sequence[] getLastSequenceInChain(boolean includeStopped)
     {
         List<Sequence> lastSequence = new ArrayList<>();
         for (ConsumerInfo consumerInfo : consumerInfos)
