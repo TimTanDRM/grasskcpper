@@ -18,6 +18,7 @@ public class ChannelConfig {
     private boolean nocwnd;
     private int sndwnd = Kcp.IKCP_WND_SND;
     private int rcvwnd = Kcp.IKCP_WND_RCV;
+    // 最大传输单元，即每次发送的最大数据 https://zhuanlan.zhihu.com/p/550570202
     private int mtu = Kcp.IKCP_MTU_DEF;
     //超时时间 超过一段时间没收到消息断开连接
     private long timeoutMillis;

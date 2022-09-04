@@ -762,7 +762,6 @@ public class Kcp implements IKcp {
                     break;
                 default:
                     ackMask = 0;
-                    break;
             }
 
             if (data.readableBytes() < len || len < 0) {
