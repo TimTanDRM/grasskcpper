@@ -24,17 +24,30 @@ public class SpeedExampleServer implements KcpListener {
 
         SpeedExampleServer speedExampleServer = new SpeedExampleServer();
         ChannelConfig channelConfig = new ChannelConfig();
-        channelConfig.nodelay(true,30,2,true);
-        channelConfig.setSndwnd(2048);
-        channelConfig.setRcvwnd(2048);
-        channelConfig.setMtu(20);
-        channelConfig.setiMessageExecutorPool(new DisruptorExecutorPool(Runtime.getRuntime().availableProcessors()/2));
-        //channelConfig.setFecDataShardCount(10);
-        //channelConfig.setFecParityShardCount(3);
-        channelConfig.setAckNoDelay(true);
-        channelConfig.setTimeoutMillis(5000);
+//        nodelay ：是否启用 nodelay模式，0不启用；1启用。
+//        interval ：协议内部工作的 interval，单位毫秒，比如 10ms或者 20ms
+//        resend ：快速重传模式，默认0关闭，可以设置2（2次ACK跨越将会直接重传）
+//        nc ：是否关闭流控，默认是0代表不关闭，1代表关闭。
+//        普通模式： ikcp_nodelay(kcp, 0, 40, 0, 0);
+//        极速模式： ikcp_nodelay(kcp, 1, 10, 2, 1);
+        channelConfig.nodelay(true,20,2,true);
+        channelConfig.setMtu(1400);
+        channelConfig.setSndwnd(256);
+        channelConfig.setRcvwnd(256);
+        channelConfig.setTimeoutMillis(30 * 1000);//30s
         channelConfig.setUseConvChannel(true);
-        channelConfig.setCrc32Check(false);
+        channelConfig.setAckNoDelay(false);
+
+//        channelConfig.setSndwnd(512);
+//        channelConfig.setRcvwnd(512);
+//        channelConfig.setMtu(512);
+//        channelConfig.setiMessageExecutorPool(new DisruptorExecutorPool(Runtime.getRuntime().availableProcessors()/2));
+//        //channelConfig.setFecDataShardCount(10);
+//        //channelConfig.setFecParityShardCount(3);
+//        channelConfig.setAckNoDelay(true);
+//        channelConfig.setTimeoutMillis(5000);
+//        channelConfig.setUseConvChannel(true);
+//        channelConfig.setCrc32Check(false);
         KcpServer kcpServer = new KcpServer();
         kcpServer.init(speedExampleServer,channelConfig,getAdapterInetSocketAddress());
     }

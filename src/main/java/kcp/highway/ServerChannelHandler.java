@@ -15,6 +15,7 @@ import kcp.highway.threadPool.ITask;
 
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
+import java.util.Date;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -23,6 +24,18 @@ import java.util.concurrent.TimeUnit;
  * 2018/9/20.
  */
 public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
+    // 固定kcp头部长度
+    private static final int KCP_HEADER_LENGTH = 28;
+    // kcp头部长度+命令长度
+    private static final int KCP_HEADER_AND_CODE_LENGTH = 30;
+
+    // 握手命令
+    private static final short CMD_CODE_SHAKE_HANDS = 100;
+    // 断连命令
+    private static final short CMD_CODE_DISCONNECT = 404;
+
+
+
     class HandshakeWaiter{
         private long convId;
         private InetSocketAddress address;
@@ -74,23 +87,26 @@ public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
     }
     // Handle handshake
     public static void handleEnet(ByteBuf data, Ukcp ukcp, User user, long conv) {
-        if (data == null || data.readableBytes() != 20) {
+        if (data == null || data.readableBytes() != KCP_HEADER_AND_CODE_LENGTH) {
             return;
         }
         // Get
-        int code = data.readInt();
-        data.readUnsignedInt(); // Empty
-        data.readUnsignedInt(); // Empty
-        int enet = data.readInt();
-        data.readUnsignedInt();
+//        int code = data.readInt();
+//        data.readUnsignedInt(); // Empty
+//        data.readUnsignedInt(); // Empty
+//        int enet = data.readInt();
+//        data.readUnsignedInt();
+        data.readerIndex(KCP_HEADER_LENGTH);
+        int enet = 0;
+        int code = data.readShort();
         try{
             switch (code) {
-                case 255:// Connect + Handshake
+                case CMD_CODE_SHAKE_HANDS:// Connect + Handshake
                     if(user!=null) {
                         Ukcp.sendHandshakeRsp(user, enet, conv);
                     }
                 break;
-                case 404 :
+                case CMD_CODE_DISCONNECT:
                     if(ukcp!=null) {
                         ukcp.close();
                     }
@@ -121,7 +137,7 @@ public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
         ByteBuf byteBuf = msg.content();
         User user = new User(ctx.channel(), msg.sender(), msg.recipient());
         Ukcp ukcp = channelManager.get(msg);
-        if(byteBuf.readableBytes() == 20){
+        if(byteBuf.readableBytes() == KCP_HEADER_AND_CODE_LENGTH){
             // send handshake
             HandshakeWaiter waiter = handshakeWaitersFind(user.getRemoteAddress());
             long convId;
