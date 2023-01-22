@@ -208,7 +208,7 @@ public class Kcp implements IKcp {
     }
 
     private static void output(ByteBuf data, Kcp kcp) {
-        if (log.isDebugEnabled()) {
+        if (log.isDebugEnabled()) { // todo 重新检查kcp核心链路，主要是game交互场景，一些不必要的判断可以移除(careful)，提高效率
             log.debug("{} [RO] {} bytes", kcp, data.readableBytes());
         }
         if (data.readableBytes() == 0) {

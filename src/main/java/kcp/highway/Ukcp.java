@@ -143,11 +143,16 @@ public class Ukcp{
     }
     public static void sendHandshakeRsp(User user, int enet, long conv) {
         ByteBuf packet = Unpooled.buffer(20);
-        packet.writeInt(325);
-        packet.writeIntLE((int) (conv >> 32));
-        packet.writeIntLE((int) (conv & 0xFFFFFFFFL));
+        packet.writeInt(32345);
+        packet.writeLong(conv);
         packet.writeInt(enet);
         packet.writeInt(340870469); // constant?
+        // todo 如下是原server端返回client端convId逻辑，需整理算法分析。暂时简单返回
+//        packet.writeInt(32345);
+//        packet.writeIntLE((int) (conv >> 32));
+//        packet.writeIntLE((int) (conv & 0xFFFFFFFFL));
+//        packet.writeInt(enet);
+//        packet.writeInt(340870469); // constant?
         Ukcp.UDPSend(packet,user);
     }
 
@@ -157,7 +162,6 @@ public class Ukcp{
     }
     public static void UDPSend(ByteBuf packet,User user){
         DatagramPacket datagramPacket = new DatagramPacket(packet,user.getRemoteAddress(), user.getLocalAddress());
-        // Send
         user.getChannel().writeAndFlush(datagramPacket);
     }
 

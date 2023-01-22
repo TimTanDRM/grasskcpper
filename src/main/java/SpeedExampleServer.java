@@ -89,5 +89,6 @@ public class SpeedExampleServer implements KcpListener {
 	@Override
 	public void onConnected(Ukcp ukcp) {
 		System.out.println("有连接进来"+Thread.currentThread().getName()+ukcp.user().getRemoteAddress());
-	}
+        System.out.println("Server onConnected. conv=" + ukcp.getConv());
+    }
 }

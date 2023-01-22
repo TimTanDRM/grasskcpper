@@ -47,6 +47,7 @@ public class WriteTask implements ITask {
                     return;
                 }
             }
+            // todo 发送统计，提高效率
             Snmp.snmp.BytesSent.add(writeBytes);
             if(ukcp.isControlWriteBufferSize()){
                 ukcp.getWriteBufferIncr().addAndGet(writeCount);

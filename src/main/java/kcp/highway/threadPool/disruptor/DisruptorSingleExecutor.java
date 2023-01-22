@@ -120,6 +120,7 @@ public class DisruptorSingleExecutor implements IMessageExecutor {
 
 	@Override
 	public void execute(ITask iTask){
+		// todo 无用？
 		Thread currentThread = Thread.currentThread();
 		//if(currentThread==this.currentThread){
 		//	iTask.execute();

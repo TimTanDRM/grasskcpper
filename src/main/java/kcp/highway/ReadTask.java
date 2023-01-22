@@ -70,6 +70,7 @@ public class ReadTask implements ITask {
                     readBytebuf(recvBuf,current,ukcp);
                 }
             }
+            // todo snmp相关的移除？？统计数据
             Snmp.snmp.BytesReceived.add(readBytes);
             //判断写事件
             if (!ukcp.getWriteBuffer().isEmpty()&& ukcp.canSend(false)) {

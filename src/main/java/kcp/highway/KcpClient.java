@@ -32,7 +32,6 @@ public class KcpClient {
     private IChannelManager channelManager;
     private HashedWheelTimer hashedWheelTimer;
 
-
     /**定时器线程工厂**/
     private static class TimerThreadFactory implements ThreadFactory
     {
@@ -44,7 +43,7 @@ public class KcpClient {
         }
     }
 
-    public void init(ChannelConfig channelConfig) {
+    public void init(ChannelConfig channelConfig, KcpListener kcpListener) {
         if(channelConfig.isUseConvChannel()){
             int convIndex = 0;
             if(channelConfig.getFecAdapt()!=null){
@@ -72,7 +71,8 @@ public class KcpClient {
                     cp.addLast(crc32Encode);
                     cp.addLast(crc32Decode);
                 }
-                cp.addLast(new ClientChannelHandler(channelManager));
+                cp.addLast(new ClientChannelHandler(channelManager, channelConfig, kcpListener,
+                        iMessageExecutorPool, hashedWheelTimer));
             }
         });
 
@@ -100,25 +100,14 @@ public class KcpClient {
         });
     }
 
-    public Ukcp connect(InetSocketAddress localAddress,InetSocketAddress remoteAddress, ChannelConfig channelConfig, KcpListener kcpListener) {
-        if(localAddress==null){
-            localAddress = new InetSocketAddress(0);
-        }
-        ChannelFuture channelFuture  = bootstrap.connect(remoteAddress,localAddress);
-
-        //= bootstrap.bind(localAddress);
-        ChannelFuture sync = channelFuture.syncUninterruptibly();
-        NioDatagramChannel channel = (NioDatagramChannel) sync.channel();
-        localAddress = channel.localAddress();
-
-        User user = new User(channel, remoteAddress, localAddress);
+    public Ukcp connect(User user, ChannelConfig channelConfig, KcpListener kcpListener) {
         IMessageExecutor iMessageExecutor = iMessageExecutorPool.getIMessageExecutor();
         KcpOutput kcpOutput = new KcpOutPutImp();
 
         Ukcp ukcp = new Ukcp(kcpOutput, kcpListener, iMessageExecutor, channelConfig,channelManager);
         ukcp.user(user);
 
-        channelManager.New(localAddress,ukcp,null);
+        channelManager.New(user.getLocalAddress(),ukcp,null);
         iMessageExecutor.execute(() -> {
             try {
                 ukcp.getKcpListener().onConnected(ukcp);
@@ -130,10 +119,6 @@ public class KcpClient {
         ScheduleTask scheduleTask = new ScheduleTask(iMessageExecutor, ukcp,hashedWheelTimer);
         hashedWheelTimer.newTimeout(scheduleTask,ukcp.getInterval(),TimeUnit.MILLISECONDS);
         return ukcp;
-    }
-
-    public Ukcp connect(InetSocketAddress remoteAddress, ChannelConfig channelConfig, KcpListener kcpListener) {
-        return connect(null,remoteAddress,channelConfig,kcpListener);
     }
 
 
@@ -164,5 +149,8 @@ public class KcpClient {
 
     public IChannelManager getChannelManager() {
         return channelManager;
+    }
+    public Bootstrap getBootstrap(){
+        return bootstrap;
     }
 }

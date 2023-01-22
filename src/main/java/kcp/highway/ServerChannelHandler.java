@@ -1,6 +1,5 @@
 package kcp.highway;
 
-import io.netty.buffer.Unpooled;
 import kcp.highway.erasure.fec.Fec;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -15,7 +14,6 @@ import kcp.highway.threadPool.ITask;
 
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
-import java.util.Date;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -24,18 +22,6 @@ import java.util.concurrent.TimeUnit;
  * 2018/9/20.
  */
 public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
-    // 固定kcp头部长度
-    private static final int KCP_HEADER_LENGTH = 28;
-    // kcp头部长度+命令长度
-    private static final int KCP_HEADER_AND_CODE_LENGTH = 30;
-
-    // 握手命令
-    private static final short CMD_CODE_SHAKE_HANDS = 100;
-    // 断连命令
-    private static final short CMD_CODE_DISCONNECT = 404;
-
-
-
     class HandshakeWaiter{
         private long convId;
         private InetSocketAddress address;
@@ -61,6 +47,7 @@ public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
     private final SecureRandom secureRandom = new SecureRandom();
 
     public void handshakeWaitersAppend(HandshakeWaiter handshakeWaiter){
+        // todo 为啥10
         if(handshakeWaiters.size()>10){
             handshakeWaiters.poll();
         }
@@ -87,26 +74,23 @@ public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
     }
     // Handle handshake
     public static void handleEnet(ByteBuf data, Ukcp ukcp, User user, long conv) {
-        if (data == null || data.readableBytes() != KCP_HEADER_AND_CODE_LENGTH) {
+        if (data == null || data.readableBytes() != 20) {
             return;
         }
         // Get
-//        int code = data.readInt();
-//        data.readUnsignedInt(); // Empty
-//        data.readUnsignedInt(); // Empty
-//        int enet = data.readInt();
-//        data.readUnsignedInt();
-        data.readerIndex(KCP_HEADER_LENGTH);
-        int enet = 0;
-        int code = data.readShort();
+        int code = data.readInt();
+        data.readUnsignedInt(); // Empty
+        data.readUnsignedInt(); // Empty
+        int enet = data.readInt();
+        data.readUnsignedInt();
         try{
             switch (code) {
-                case CMD_CODE_SHAKE_HANDS:// Connect + Handshake
+                case 100:// Connect + Handshake
                     if(user!=null) {
                         Ukcp.sendHandshakeRsp(user, enet, conv);
                     }
                 break;
-                case CMD_CODE_DISCONNECT:
+                case 400:
                     if(ukcp!=null) {
                         ukcp.close();
                     }
@@ -137,13 +121,14 @@ public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
         ByteBuf byteBuf = msg.content();
         User user = new User(ctx.channel(), msg.sender(), msg.recipient());
         Ukcp ukcp = channelManager.get(msg);
-        if(byteBuf.readableBytes() == KCP_HEADER_AND_CODE_LENGTH){
+        if(byteBuf.readableBytes() == 20){
             // send handshake
             HandshakeWaiter waiter = handshakeWaitersFind(user.getRemoteAddress());
             long convId;
             if(waiter==null) {
                 //generate unique convId
                 synchronized (channelManager) {
+                    // todo 这里注意死循环。http登录后，由服务端返回会话id，当前服务端和客户端都设置固定值，待后续改造。
                     do {
                         convId = secureRandom.nextLong();
                     } while (channelManager.convExists(convId) || handshakeWaitersFind(convId) != null);
@@ -186,15 +171,15 @@ public class ServerChannelHandler extends ChannelInboundHandlerAdapter {
             }
         }
         // established tunnel
-        iMessageExecutor.execute(new UckpEventSender(newConnection, ukcp, byteBuf, msg.sender()));
+        iMessageExecutor.execute(new UkcpEvekcntSender(newConnection, ukcp, byteBuf, msg.sender()));
     }
 
-    static class UckpEventSender implements ITask {
+    static class UkcpEvekcntSender implements ITask {
         private final boolean newConnection;
         private final Ukcp uckp;
         private final ByteBuf byteBuf;
         private final InetSocketAddress sender;
-        UckpEventSender(boolean newConnection,Ukcp ukcp,ByteBuf byteBuf,InetSocketAddress sender){
+        UkcpEvekcntSender(boolean newConnection, Ukcp ukcp, ByteBuf byteBuf, InetSocketAddress sender){
             this.newConnection=newConnection;
             this.uckp=ukcp;
             this.byteBuf=byteBuf;
