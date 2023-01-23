@@ -72,7 +72,7 @@ public class SpeedExampleClient implements KcpListener {
         channelConfig.setMtu(1400);
         channelConfig.setSndwnd(256);
         channelConfig.setRcvwnd(256);
-        channelConfig.setTimeoutMillis(40 * 1000);//30s
+        channelConfig.setTimeoutMillis(400 * 1000);//30s
         channelConfig.setUseConvChannel(true);
         channelConfig.setiMessageExecutorPool(new DisruptorExecutorPool(Runtime.getRuntime().availableProcessors()/2));
         //channelConfig.setFecDataShardCount(10);
@@ -121,6 +121,15 @@ public class SpeedExampleClient implements KcpListener {
         ByteBuf buf = Unpooled.wrappedBuffer(bytes);
         kcp.write(buf);
         buf.release();
+
+
+        for(;;){
+            ByteBuf testServerReceivePacket = Unpooled.buffer(16);
+            testServerReceivePacket.writeInt(2222);
+            testServerReceivePacket.writeInt(5555);
+            testServerReceivePacket.writeLong(800000L);
+            kcp.write(testServerReceivePacket);
+        }
 
 
 

@@ -64,15 +64,18 @@ public class SpeedExampleServer implements KcpListener {
     @Override
     public void handleReceive(ByteBuf buf, Ukcp kcp) {
         inBytes+=buf.readableBytes();
-        long now =System.currentTimeMillis();
-        if(now-start>=1000){
-            System.out.println("耗时 :" +(now-start) +" 接收数据: " +(Snmp.snmp.InBytes.doubleValue()/1024.0/1024.0)+"MB"+" 有效数据: "+inBytes/1024.0/1024.0+" MB");
-            System.out.println(Snmp.snmp.BytesReceived.doubleValue()/1024.0/1024.0);
-            System.out.println(Snmp.snmp.toString());
-            inBytes=0;
-            Snmp.snmp = new Snmp();
-            start=now;
-        }
+        int a = buf.readInt();
+        int b = buf.readInt();
+        long c = buf.readLong();
+//        long now =System.currentTimeMillis();
+//        if(now-start>=1000){
+//            System.out.println("耗时 :" +(now-start) +" 接收数据: " +(Snmp.snmp.InBytes.doubleValue()/1024.0/1024.0)+"MB"+" 有效数据: "+inBytes/1024.0/1024.0+" MB");
+//            System.out.println(Snmp.snmp.BytesReceived.doubleValue()/1024.0/1024.0);
+//            System.out.println(Snmp.snmp.toString());
+//            inBytes=0;
+//            Snmp.snmp = new Snmp();
+//            start=now;
+//        }
     }
 
     @Override
